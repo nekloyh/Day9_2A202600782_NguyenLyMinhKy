@@ -13,10 +13,13 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
+import langchain
 from dotenv import load_dotenv
 from langchain_core.tools import tool
 
 from common.llm import get_llm
+
+langchain.debug = True
 
 # ---------------------------------------------------------------------------
 # Expanded knowledge base (law + tax + compliance entries)
@@ -172,7 +175,35 @@ def check_compliance_requirements(industry: str, company_size: str) -> str:
     )
 
 
-TOOLS = [search_legal_database, calculate_penalty, check_compliance_requirements]
+@tool
+def search_case_law(keywords: str) -> str:
+    """Tìm kiếm án lệ theo từ khóa.
+
+    Args:
+        keywords: Từ khóa tìm kiếm (ví dụ: breach, negligence, contract, privacy, tax)
+    """
+    cases = {
+        "breach": "Hadley v. Baxendale (1854) - Consequential damages must be foreseeable at contract formation",
+        "negligence": "Donoghue v. Stevenson (1932) - Established duty of care in tort law",
+        "contract": "Carlill v. Carbolic Smoke Ball Co (1893) - Unilateral contract offer binding on acceptance",
+        "privacy": "Griswold v. Connecticut (1965) - Constitutional right to privacy; Sorrell v. IMS Health (2011) - Data privacy & free speech",
+        "tax": "Commissioner v. Glenshaw Glass (1955) - Broad definition of gross income; Gregory v. Helvering (1935) - Substance-over-form doctrine",
+        "trade secret": "E.I. du Pont de Nemours & Co. v. Christopher (1970) - Industrial espionage via aerial photography",
+        "data": "FTC v. Wyndham Worldwide Corp (2015) - FTC authority over data security practices",
+        "fraud": "United States v. Skilling (2010) - Honest services fraud; Basic Inc. v. Levinson (1988) - Securities fraud materiality",
+        "employment": "Burlington Industries v. Ellerth (1998) - Employer liability for supervisor harassment",
+    }
+    kw = keywords.lower()
+    results = [case for key, case in cases.items() if key in kw]
+    if results:
+        return "\n".join(results)
+    # fallback: partial match on individual words
+    words = set(kw.split())
+    results = [case for key, case in cases.items() if any(w in key for w in words)]
+    return "\n".join(results) if results else "Không tìm thấy án lệ phù hợp"
+
+
+TOOLS = [search_legal_database, calculate_penalty, check_compliance_requirements, search_case_law]
 
 QUESTION = (
     "A tech startup with $5M revenue was caught sharing user data without consent "

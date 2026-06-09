@@ -445,7 +445,6 @@ async def main():
     print("  ./start_all.sh && python test_client.py")
     print("=" * 70)
 
-
 if __name__ == "__main__":
     load_dotenv()
     asyncio.run(main())

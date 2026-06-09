@@ -83,7 +83,7 @@ LEGAL_KNOWLEDGE = [
     },
     {
         "id": "labor_law",
-        "keywords": ["lao động", "sa thải", "hợp đồng lao động", "labor", "termination"],
+        "keywords": ["lao", "động", "sa", "thải", "hợp", "đồng", "labor", "termination", "employment"],
         "text": (
             "Theo Bộ luật Lao động Việt Nam 2019, người sử dụng lao động có thể "
             "đơn phương chấm dứt hợp đồng trong các trường hợp: (1) người lao động "
@@ -147,11 +147,12 @@ def calculate_damages(breach_type: str, contract_value: float) -> str:
 
 @tool
 def check_statute_of_limitations(case_type: str) -> str:
-    """Kiểm tra thời hiệu khởi kiện theo loại vụ án (Việt Nam và Hoa Kỳ).
+    """Check the statute of limitations by case type (Vietnam and USA).
 
     Args:
-        case_type: Loại vụ án. Ví dụ: contract, tort, property, nda, labor,
-                   fraud, ip, defamation, personal_injury, criminal
+        case_type: Case type in English. Supported values: contract, tort,
+                   property, nda, labor, fraud, ip, defamation,
+                   personal_injury, criminal
     """
     limits = {
         "contract": {

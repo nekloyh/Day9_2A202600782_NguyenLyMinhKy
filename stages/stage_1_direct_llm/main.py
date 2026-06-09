@@ -19,9 +19,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from common.llm import get_llm
 
-QUESTION = (
-    "Hậu quả pháp lý là gì nếu một công ty vi phạm thỏa thuận bảo mật thông tin??"
-)
+QUESTION = "Hậu quả pháp lý là gì nếu một công ty vi phạm thỏa thuận bảo mật thông tin?"
 
 
 async def main():

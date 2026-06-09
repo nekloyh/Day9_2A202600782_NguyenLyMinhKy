@@ -28,7 +28,7 @@ async def main() -> None:
 
     async with httpx.AsyncClient(timeout=300.0) as http_client:
         # Resolve agent card
-        card_url = f"{CUSTOMER_AGENT_URL}/.well-known/agent.json"
+        card_url = f"{CUSTOMER_AGENT_URL}/.well-known/agent-card.json"
         try:
             card_resp = await http_client.get(card_url)
             card_resp.raise_for_status()
@@ -38,53 +38,34 @@ async def main() -> None:
             print("Make sure all services are running (./start_all.sh)")
             sys.exit(1)
 
-        from a2a.types import AgentCard, Message, Part, Role, TextPart, MessageSendParams
-        from a2a.client import A2AClient
+        from a2a.types import AgentCard, Message, Part, Role, TextPart
+        from a2a.client import ClientConfig, ClientFactory
+        from common.a2a_client import extract_text
         from uuid import uuid4
 
         agent_card = AgentCard.model_validate(card_resp.json())
         print(f"Connected to agent: {agent_card.name} v{agent_card.version}")
         print("-" * 60)
 
-        # Build the legacy A2AClient
-        client = A2AClient(httpx_client=http_client, agent_card=agent_card)
+        client = ClientFactory(
+            ClientConfig(streaming=False, httpx_client=http_client)
+        ).create(agent_card)
 
         # Construct the message
-        from a2a.types import SendMessageRequest, MessageSendParams as MSP
         message = Message(
             role=Role.user,
             parts=[Part(root=TextPart(text=QUESTION))],
             message_id=str(uuid4()),
         )
-        request = SendMessageRequest(
-            id=str(uuid4()),
-            params=MSP(message=message),
-        )
 
         print("Sending request (this may take 30-60s while agents chain)...\n")
         t0 = time.perf_counter()
-        response = await client.send_message(request)
+        response = None
+        async for event in client.send_message(message):
+            response = event[0] if isinstance(event, tuple) else event
         elapsed = time.perf_counter() - t0
 
-        # Parse response
-        result_text = ""
-        if hasattr(response, "root"):
-            root = response.root
-            if hasattr(root, "result"):
-                result = root.result
-                # Task with artifacts
-                if hasattr(result, "artifacts") and result.artifacts:
-                    for artifact in result.artifacts:
-                        for part in artifact.parts:
-                            p = part.root if hasattr(part, "root") else part
-                            if hasattr(p, "text"):
-                                result_text += p.text
-                # Message with parts
-                elif hasattr(result, "parts") and result.parts:
-                    for part in result.parts:
-                        p = part.root if hasattr(part, "root") else part
-                        if hasattr(p, "text"):
-                            result_text += p.text
+        result_text = extract_text(response)
 
         if result_text:
             print("RESPONSE:")

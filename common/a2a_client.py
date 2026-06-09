@@ -11,14 +11,12 @@ from uuid import uuid4
 
 import httpx
 
-from a2a.client import A2AClient
+from a2a.client import ClientConfig, ClientFactory
 from a2a.types import (
     AgentCard,
     Message,
-    MessageSendParams,
     Part,
     Role,
-    SendMessageRequest,
     TextPart,
 )
 
@@ -46,13 +44,14 @@ async def delegate(
     """
     async with httpx.AsyncClient(timeout=300.0) as http_client:
         # Fetch agent card
-        card_url = f"{endpoint}/.well-known/agent.json"
+        card_url = f"{endpoint}/.well-known/agent-card.json"
         card_resp = await http_client.get(card_url)
         card_resp.raise_for_status()
         agent_card = AgentCard.model_validate(card_resp.json())
 
-        # Build deprecated (legacy) A2AClient — straightforward for send_message
-        client = A2AClient(httpx_client=http_client, agent_card=agent_card)
+        client = ClientFactory(
+            ClientConfig(streaming=False, httpx_client=http_client)
+        ).create(agent_card)
 
         # Build message with trace metadata
         message = Message(
@@ -67,33 +66,33 @@ async def delegate(
             },
         )
 
-        request = SendMessageRequest(
-            id=str(uuid4()),
-            params=MessageSendParams(message=message),
-        )
-
         logger.debug(
             "Delegating to %s (depth=%d, trace=%s)", endpoint, depth, trace_id
         )
 
-        response = await client.send_message(request)
+        response = None
+        async for event in client.send_message(message):
+            response = event[0] if isinstance(event, tuple) else event
 
-        # Extract text from SendMessageResponse
-        return _extract_text(response)
+        return extract_text(response)
 
 
-def _extract_text(response: object) -> str:
+def extract_text(response: object) -> str:
     """Walk the response tree and collect all TextPart.text values."""
     text = ""
+
+    if response is None:
+        return text
+
+    if isinstance(response, tuple):
+        response = response[0]
 
     # Unwrap root if it's a RootModel
     if hasattr(response, "root"):
         response = response.root
 
-    # SendMessageSuccessResponse has a .result (Task | Message)
-    result = getattr(response, "result", None)
-    if result is None:
-        return text
+    # Legacy responses wrap Task/Message in .result; current clients return it directly.
+    result = getattr(response, "result", response)
 
     # Task — text lives in artifacts
     artifacts = getattr(result, "artifacts", None)

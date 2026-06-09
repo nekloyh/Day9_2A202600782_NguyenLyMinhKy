@@ -39,11 +39,12 @@ uv run python exercises/exercise_4_multiagent.py
 
 ---
 
-## Đáp Án
+## Tham Khảo
 
-Đáp án chi tiết có trong file `SOLUTIONS.md`. 
+Sau khi tự làm, có thể đối chiếu với:
 
-**⚠️ Lưu ý:** Hãy cố gắng tự làm trước khi xem đáp án!
+- `stages/stage_2_rag_tools/main.py`
+- `stages/stage_4_milti_agent/main.py`
 
 ---
 
@@ -110,6 +111,6 @@ Nếu gặp khó khăn:
 1. Đọc lại phần lý thuyết trong `CODELAB.md`
 2. Xem `QUICK_REFERENCE.md` cho syntax
 3. Hỏi bạn bè hoặc giảng viên
-4. Check `SOLUTIONS.md` (last resort!)
+4. Đối chiếu với implementation trong `stages/` sau khi đã tự làm
 
 **Chúc bạn làm bài tốt! 💪**

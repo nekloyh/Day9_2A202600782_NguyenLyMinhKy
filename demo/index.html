@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Multi-Agent Live Demo — Stage 4</title>
+<style>
+  :root {
+    --bg: #0f1419; --panel: #1a212b; --border: #2a3441;
+    --accent: #4f9cf9; --ok: #3ecf8e; --idle: #4a5568;
+    --text: #e6edf3; --muted: #8b98a5; --warn: #f0b429;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.5;
+  }
+  header {
+    padding: 20px 28px; border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #1a212b, #141a22);
+  }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 28px; }
+  .ask-row { display: flex; gap: 10px; margin-bottom: 8px; }
+  input[type=text] {
+    flex: 1; padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--panel); color: var(--text); font-size: 14px;
+  }
+  button {
+    padding: 12px 22px; border: 0; border-radius: 8px; background: var(--accent);
+    color: #fff; font-weight: 600; cursor: pointer; font-size: 14px;
+  }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .samples { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+  .samples span {
+    font-size: 12px; padding: 6px 11px; border: 1px solid var(--border);
+    border-radius: 20px; color: var(--muted); cursor: pointer; background: var(--panel);
+  }
+  .samples span:hover { color: var(--text); border-color: var(--accent); }
+  .pipeline { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
+  .node {
+    flex: 1; min-width: 150px; padding: 14px; border-radius: 10px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-left: 4px solid var(--idle); transition: all .25s; opacity: .55;
+  }
+  .node.active { opacity: 1; border-left-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .node.done { opacity: 1; border-left-color: var(--ok); }
+  .node .role { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .node .name { font-weight: 600; margin: 3px 0; }
+  .node .status { font-size: 12px; color: var(--muted); }
+  .node.active .status { color: var(--accent); }
+  .node.done .status { color: var(--ok); }
+  .log { display: flex; flex-direction: column; gap: 12px; }
+  .event {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; animation: fade .3s ease;
+  }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; } }
+  .event .tag {
+    display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 9px;
+    border-radius: 6px; background: #243042; color: var(--accent); margin-bottom: 8px;
+  }
+  .event .tag.route { background: #3a2f12; color: var(--warn); }
+  .event .tag.final { background: #14392b; color: var(--ok); }
+  .event pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 13px; color: var(--text); font-family: inherit; }
+  .meta { color: var(--muted); font-size: 13px; margin-top: 16px; }
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--accent);
+    border-top-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>🏛️ Multi-Agent Legal System — Live Demo (Stage 4)</h1>
+  <p>Quan sát các agent tương tác theo thời gian thực: Lead Attorney → Router → Specialists (song song) → Aggregator</p>
+</header>
+<div class="wrap">
+  <div class="ask-row">
+    <input id="q" type="text" placeholder="Nhập câu hỏi pháp lý..." />
+    <button id="ask">Hỏi</button>
+  </div>
+  <div class="samples" id="samples"></div>
+
+  <div class="pipeline" id="pipeline"></div>
+
+  <div class="log" id="log"></div>
+  <div class="meta" id="meta"></div>
+</div>
+
+<script>
+const NODES = [
+  { id: "analyze_law",                 role: "Lead Attorney",  name: "Phân tích luật" },
+  { id: "check_routing",               role: "Router",         name: "Định tuyến" },
+  { id: "call_tax_specialist",         role: "Specialist",     name: "Thuế" },
+  { id: "call_compliance_specialist",  role: "Specialist",     name: "Tuân thủ" },
+  { id: "call_privacy_specialist",     role: "Specialist",     name: "Quyền riêng tư" },
+  { id: "aggregate",                   role: "Senior Counsel", name: "Tổng hợp" },
+];
+const SAMPLES = [
+  "A tech startup shared user data without consent and failed to pay taxes on overseas revenue. What are the legal consequences?",
+  "A company experienced a data breach exposing 50,000 user records without consent. What are the legal consequences?",
+  "Một công ty vi phạm hợp đồng và trốn thuế thì hậu quả pháp lý là gì?",
+];
+
+const pipelineEl = document.getElementById("pipeline");
+const logEl = document.getElementById("log");
+const metaEl = document.getElementById("meta");
+const qEl = document.getElementById("q");
+const askBtn = document.getElementById("ask");
+
+function renderPipeline() {
+  pipelineEl.innerHTML = "";
+  for (const n of NODES) {
+    const div = document.createElement("div");
+    div.className = "node"; div.id = "node-" + n.id;
+    div.innerHTML = `<div class="role">${n.role}</div><div class="name">${n.name}</div><div class="status">chờ</div>`;
+    pipelineEl.appendChild(div);
+  }
+}
+function setNode(id, state, statusText) {
+  const el = document.getElementById("node-" + id);
+  if (!el) return;
+  el.classList.remove("active", "done");
+  if (state) el.classList.add(state);
+  el.querySelector(".status").textContent = statusText;
+}
+function addEvent(tagClass, tagText, body) {
+  const div = document.createElement("div");
+  div.className = "event";
+  div.innerHTML = `<span class="tag ${tagClass}">${tagText}</span><pre></pre>`;
+  div.querySelector("pre").textContent = body;
+  logEl.appendChild(div);
+  div.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+const LABELS = {
+  analyze_law: ["Lead Attorney", ""],
+  check_routing: ["Router", "route"],
+  call_tax_specialist: ["Tax Specialist", ""],
+  call_compliance_specialist: ["Compliance Specialist", ""],
+  call_privacy_specialist: ["Privacy Specialist", ""],
+  aggregate: ["Senior Counsel — Final Answer", "final"],
+};
+
+let es = null;
+function ask() {
+  const q = qEl.value.trim();
+  if (!q) return;
+  if (es) es.close();
+  logEl.innerHTML = ""; metaEl.innerHTML = "";
+  renderPipeline();
+  askBtn.disabled = true;
+  metaEl.innerHTML = '<span class="spinner"></span> Đang chạy các agent...';
+
+  es = new EventSource("/stream?q=" + encodeURIComponent(q));
+
+  es.addEventListener("start", e => {
+    setNode("analyze_law", "active", "đang chạy...");
+  });
+  es.addEventListener("node", e => {
+    const d = JSON.parse(e.data);
+    const [label, cls] = LABELS[d.node] || [d.node, ""];
+    setNode(d.node, "done", "xong");
+    addEvent(cls, label, d.text);
+    if (d.next && d.next.length) {
+      d.next.forEach(n => setNode(n, "active", "đang chạy..."));
+    }
+  });
+  es.addEventListener("final", e => {
+    const d = JSON.parse(e.data);
+    setNode("aggregate", "done", "xong");
+    addEvent("final", "✅ Câu trả lời cuối cùng", d.text);
+  });
+  es.addEventListener("done", e => {
+    const d = JSON.parse(e.data);
+    metaEl.innerHTML = `✓ Hoàn tất — ${d.nodes} bước agent · ⏱ ${d.latency}s · workers: ${d.workers.join(", ") || "none"}`;
+    askBtn.disabled = false; es.close();
+  });
+  es.addEventListener("error", e => {
+    metaEl.innerHTML = '<span style="color:#f87171">Lỗi kết nối / server. Kiểm tra console server.</span>';
+    askBtn.disabled = false; if (es) es.close();
+  });
+}
+
+askBtn.onclick = ask;
+qEl.addEventListener("keydown", e => { if (e.key === "Enter") ask(); });
+const samplesEl = document.getElementById("samples");
+SAMPLES.forEach(s => {
+  const sp = document.createElement("span");
+  sp.textContent = s.length > 70 ? s.slice(0, 67) + "..." : s;
+  sp.title = s; sp.onclick = () => { qEl.value = s; };
+  samplesEl.appendChild(sp);
+});
+qEl.value = SAMPLES[0];
+renderPipeline();
+</script>
+</body>
+</html>

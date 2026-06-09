@@ -15,14 +15,88 @@
 | 3 | ReAct agent và case-law tool | Hoàn thành |
 | 4 | Privacy agent, conditional routing, parallel `Send` | Hoàn thành |
 | 5 | Distributed A2A, discovery, tracing, graceful degradation | Hoàn thành |
-| Cộng điểm | Đo và tối ưu latency | Hoàn thành |
+| Cộng điểm #1 | Frontend HTML demo tương tác Agent (Stage 4) | Hoàn thành |
+| Cộng điểm #2 | Đo và tối ưu latency | Hoàn thành |
+| Assignment | Supervisor-Workers pattern (`Lab_Assignment/`, 3 workers) | Hoàn thành |
 
-### Phần 1–4: Các Thay Đổi Chính
+### Phần 1–4: Các Thay Đổi Chính + Kiểm Chứng Live
 
-- **Phần 1:** đổi câu hỏi pháp lý trong `stages/stage_1_direct_llm/main.py`; cấu hình `temperature=0.3` trong `common/llm.py`.
-- **Phần 2:** thêm entry `labor_law`, tool `check_statute_of_limitations`, bind tool và thực thi qua tool map. Cả Stage 2 và `exercises/exercise_2_tools.py` đã hoàn chỉnh.
-- **Phần 3:** thêm `search_case_law` vào danh sách tools; bật LangChain debug để quan sát ReAct loop.
-- **Phần 4:** thêm privacy specialist, conditional routing theo `data/privacy/gdpr/dữ liệu`, aggregation và edge về node tổng hợp. `exercises/exercise_4_multiagent.py` đã được kiểm chứng bằng một lượt `graph.ainvoke()` với fake LLM.
+Tất cả output dưới đây chạy thật ngày **09/06/2026** với `gpt-4o-mini`.
+
+#### Phần 1 — Direct LLM (Bài 1.1 + 1.2)
+
+- **1.1:** đổi câu hỏi pháp lý trong `stages/stage_1_direct_llm/main.py` (hậu quả pháp lý khi vi phạm thỏa thuận bảo mật).
+- **1.2:** cấu hình `temperature=0.3` trong `common/llm.py`.
+
+```bash
+uv run python stages/stage_1_direct_llm/main.py
+```
+LLM trả lời trực tiếp từ training data (không tool, không RAG), trích 5 hậu quả pháp lý:
+```
+1. Trách nhiệm bồi thường thiệt hại  2. Hủy bỏ hợp đồng  3. Xử phạt hành chính
+4. Truy cứu trách nhiệm hình sự       5. Mất uy tín
+```
+→ Xác nhận giới hạn Stage 1: stateless, không grounding, không cite được statute cụ thể.
+
+#### Phần 2 — LLM + RAG/Tools (Bài 2.1 + 2.2)
+
+- **2.1:** thêm entry `labor_law` (Bộ luật Lao động 2019) vào `LEGAL_KNOWLEDGE`.
+- **2.2:** thêm tool `check_statute_of_limitations` (mở rộng cho cả 10 loại vụ án VN + US), bind tool và thực thi qua tool map. Cả Stage 2 và `exercises/exercise_2_tools.py` đã hoàn chỉnh.
+
+```bash
+uv run python stages/stage_2_rag_tools/main.py
+```
+LLM tự quyết định gọi tool và grounding câu trả lời:
+```
+>>> Step 1: Asking LLM (with tools bound)...
+>>> Step 2: LLM requested 1 tool call(s):
+  Tool: search_legal_database
+  Args: {'query': 'NDA Việt Nam hậu quả pháp lý'}
+  Result: [nda_trade_secret] NDA breaches may trigger both contractual and
+          statutory liability. Under the DTSA (18 U.S.C. § 1836)...
+>>> Step 3: LLM generating final answer with tool results...
+```
+→ Khác Stage 1: câu trả lời được grounding bằng statute thật từ knowledge base.
+
+#### Phần 3 — Single Agent ReAct (Bài 3.1 + 3.2)
+
+- **3.1:** thêm tool `search_case_law` (Hadley v. Baxendale, Donoghue v. Stevenson...) vào tools list.
+- **3.2:** bật `langchain.debug = True` để quan sát chi tiết vòng lặp ReAct.
+
+```bash
+uv run python stages/stage_3_single_agent/main.py
+```
+Agent **tự động** lặp Think→Act→Observe nhiều vòng, gọi song song nhiều tool:
+```
+[Step 1] THINK + ACT  → search_legal_database('data privacy sharing user data...')
+                      → search_legal_database('tax evasion overseas revenue')
+[Step 2/3] OBSERVE    → [data_privacy] CCPA/GDPR... | [tax_evasion] 26 U.S.C. § 7201...
+[Step 4] THINK + ACT  → calculate_penalty('data_privacy', 'high', 5000000)
+                      → calculate_penalty('tax_evasion', 'high', 5000000)
+[Step 5/6] OBSERVE    → Penalty Estimate...
+[Step 7] FINAL ANSWER → tổng hợp đầy đủ
+```
+→ Khác Stage 2: không cần viết tool-loop thủ công; agent tự orchestration đa bước.
+
+#### Phần 4 — Multi-Agent In-Process (Bài 4.1 + 4.2)
+
+- **4.1:** thêm `call_privacy_specialist` (GDPR/CCPA/Nghị định 13/2023) như một ReAct sub-agent.
+- **4.2:** conditional routing — `route_to_specialists` dispatch song song bằng `Send` dựa trên cờ LLM + keyword (`data/privacy/gdpr/dữ liệu`, `tax/thuế`, `compliance/sec`). `exercises/exercise_4_multiagent.py` đã kiểm chứng bằng `graph.ainvoke()` với fake LLM.
+
+```bash
+uv run python stages/stage_4_milti_agent/main.py
+```
+Với câu hỏi data breach (50,000 user records), router **chọn động** compliance + privacy, **bỏ qua tax**:
+```
+[Node: analyze_law] Done (1180 chars)
+[Node: check_routing] needs_tax=False, needs_compliance=True, needs_privacy=True
+[Node: call_compliance_specialist] starting...   ┐ chạy SONG SONG
+[Node: call_privacy_specialist] starting...      ┘ (LangGraph Send)
+[Node: call_compliance_specialist] Done (988 chars)
+[Node: call_privacy_specialist] Done (1051 chars)
+[Node: aggregate] Done (3259 chars)
+```
+→ Xác nhận conditional routing (skip specialist không liên quan) + parallel `Send` hoạt động đúng.
 
 ## Phần 5: Distributed A2A System
 
@@ -258,7 +332,37 @@ Hardcode URLs được nhưng tạo tight coupling: khi endpoint thay đổi, ph
 
 ## Bài Tập Cộng Điểm
 
-### Đo Latency Hệ Thống (Stage 5)
+### #1 — Frontend HTML Demo Tương Tác Agent (Stage 4)
+
+**Thư mục `demo/`:** một trang web hiển thị **trực tiếp** các agent của Stage 4 tương tác
+theo thời gian thực.
+
+- `demo/demo_server.py` — bridge FastAPI: phục vụ trang HTML và **stream từng bước agent**
+  qua Server-Sent Events (SSE) khi LangGraph multi-agent graph chạy.
+- `demo/index.html` — frontend single-page: pipeline `analyze_law → check_routing →
+  [tax + compliance + privacy] → aggregate` sáng dần theo từng node; hiển thị output mỗi
+  specialist và câu trả lời tổng hợp.
+
+**Chạy:**
+```bash
+uv run python -m demo.demo_server     # mở http://localhost:8800
+```
+
+**Kiểm chứng live (SSE backend, câu hỏi data-privacy + thuế):**
+```
+[NODE]  analyze_law          → law analysis
+[NODE]  check_routing        → needs_tax=True, needs_compliance=False, needs_privacy=True
+                               dispatch song song: call_tax_specialist, call_privacy_specialist
+[NODE]  call_tax_specialist      (parallel)
+[NODE]  call_privacy_specialist  (parallel)
+[FINAL] aggregate            → câu trả lời tổng hợp (2980 chars)
+[DONE]  nodes=5  latency=30.07s  workers=[tax, privacy]
+```
+
+Router **bỏ qua** compliance vì câu hỏi không liên quan — xác nhận conditional routing +
+parallel `Send` hoạt động đúng, và frontend nhận được luồng sự kiện theo thời gian thực.
+
+### #2 — Đo Latency Hệ Thống (Stage 5)
 
 **Phương pháp đo:** dùng `time.perf_counter()` trong `test_client.py` bao quanh toàn bộ vòng lặp nhận event từ A2A client:
 
@@ -350,6 +454,35 @@ graph.add_edge("delegate", END)
 > Chỉ Stage 5 được benchmark lại trong phiên kiểm chứng ngày 09/06/2026. Không nên trình bày latency của Stage 1–4 như số đo nếu chưa chạy benchmark tương ứng.
 
 **Kết luận:** Stage 5 chứng minh được service separation, tracing, dynamic lookup và graceful degradation. Tuy nhiên đây vẫn là demo/learning architecture: Registry và task store còn in-memory, chưa có authentication, persistence, heartbeat, retry policy hay production-grade load balancing.
+
+---
+
+## Assignment: Supervisor-Workers (thư mục `Lab_Assignment/`)
+
+Ngoài bài lab trên lớp, phần **Assignment** cải thiện agent bằng pattern
+**Supervisor – Workers** với 3 workers chuyên môn, dùng LangGraph (chi tiết: `Lab_Assignment/README.md`).
+
+**Khác biệt cốt lõi với Stage 4:** Stage 4 định tuyến **tĩnh** (1 lần `check_routing` rồi
+fan-out parallel `Send`). Assignment dùng **supervisor LLM** quyết định worker kế tiếp theo
+**từng lượt**, worker luôn trả quyền về supervisor → vòng lặp `supervisor ↔ worker` tới khi
+`FINISH`. Worker sau còn đọc output worker trước (`legal_research` làm nền cho `tax`/`compliance`).
+Có guard `MAX_ITERATIONS` chống loop vô hạn.
+
+```bash
+uv run python -m Lab_Assignment.main
+```
+
+**Kiểm chứng live (09/06/2026):**
+```
+# Câu hỏi đa lĩnh vực (data privacy + thuế):
+supervisor→legal_research → supervisor→compliance → supervisor→tax → supervisor→FINISH
+Workers engaged: [legal_research, compliance, tax] (3/3) · latency 26.46s
+
+# Câu hỏi hợp đồng thuần (chứng minh routing ĐỘNG):
+supervisor→legal_research → supervisor→FINISH
+Workers engaged: [legal_research] (1/3) — tự bỏ qua tax & compliance · latency 16.20s
+```
+→ Supervisor định tuyến động theo nội dung câu hỏi, không fan-out cứng như Stage 4.
 
 ---
 

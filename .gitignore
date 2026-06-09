@@ -3,3 +3,6 @@
 **cache**
 .claude
 **SOLUTION**
+__pycache__
+.DS_store
+

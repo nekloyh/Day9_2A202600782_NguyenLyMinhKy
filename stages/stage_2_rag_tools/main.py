@@ -81,6 +81,16 @@ LEGAL_KNOWLEDGE = [
             "public interest (Winter v. Natural Resources Defense Council, 2008)."
         ),
     },
+    {
+        "id": "labor_law",
+        "keywords": ["lao động", "sa thải", "hợp đồng lao động", "labor", "termination"],
+        "text": (
+            "Theo Bộ luật Lao động Việt Nam 2019, người sử dụng lao động có thể "
+            "đơn phương chấm dứt hợp đồng trong các trường hợp: (1) người lao động "
+            "thường xuyên không hoàn thành công việc; (2) bị ốm đau, tai nạn đã điều trị "
+            "12 tháng chưa khỏi; (3) thiên tai, hỏa hoạn; (4) người lao động đủ tuổi nghỉ hưu."
+        ),
+    }
 ]
 
 
@@ -135,10 +145,96 @@ def calculate_damages(breach_type: str, contract_value: float) -> str:
     )
 
 
-TOOLS = [search_legal_database, calculate_damages]
+@tool
+def check_statute_of_limitations(case_type: str) -> str:
+    """Kiểm tra thời hiệu khởi kiện theo loại vụ án (Việt Nam và Hoa Kỳ).
 
-QUESTION = "What are the legal consequences if a company breaches a non-disclosure agreement?"
+    Args:
+        case_type: Loại vụ án. Ví dụ: contract, tort, property, nda, labor,
+                   fraud, ip, defamation, personal_injury, criminal
+    """
+    limits = {
+        "contract": {
+            "vn": "3 năm (Bộ luật Dân sự 2015, Điều 429)",
+            "us": "4 năm (UCC § 2-725); 6 năm ở một số bang (NY, MA)",
+            "note": "Tính từ ngày biết hoặc phải biết quyền bị vi phạm",
+        },
+        "tort": {
+            "vn": "3 năm (BLDS 2015, Điều 588)",
+            "us": "2-3 năm tùy bang",
+            "note": "Tính từ ngày xảy ra hành vi gây thiệt hại hoặc ngày phát hiện",
+        },
+        "property": {
+            "vn": "Không thời hạn với tranh chấp quyền sở hữu; 3 năm với thiệt hại tài sản",
+            "us": "3-10 năm tùy bang và loại bất động sản",
+            "note": "Tranh chấp quyền sở hữu đất đai VN không áp dụng thời hiệu",
+        },
+        "nda": {
+            "vn": "3 năm (BLDS 2015, áp dụng theo hợp đồng)",
+            "us": "3 năm (DTSA, 18 U.S.C. § 1836(d))",
+            "note": "Tính từ ngày phát hiện hoặc lẽ ra phải phát hiện hành vi vi phạm",
+        },
+        "labor": {
+            "vn": "1 năm tranh chấp cá nhân; 3 năm tranh chấp tập thể (Bộ luật LĐ 2019)",
+            "us": "180-300 ngày (EEOC filing); 2-3 năm cho FLSA claims",
+            "note": "VN: tính từ ngày phát hiện hành vi vi phạm quyền lợi lao động",
+        },
+        "fraud": {
+            "vn": "3 năm (BLDS 2015); hình sự tùy khung hình phạt",
+            "us": "2-6 năm tùy bang; discovery rule thường áp dụng",
+            "note": "Nhiều bang áp dụng discovery rule: tính từ khi phát hiện gian lận",
+        },
+        "ip": {
+            "vn": "2 năm (Luật SHTT 2005, sửa đổi 2022)",
+            "us": "3 năm bản quyền (17 U.S.C. § 507); 6 năm nhãn hiệu (Lanham Act)",
+            "note": "Tính từ ngày phát hiện hành vi xâm phạm quyền SHTT",
+        },
+        "defamation": {
+            "vn": "3 năm (BLDS 2015, Điều 588)",
+            "us": "1-3 năm tùy bang; thường 1 năm",
+            "note": "Một trong những thời hiệu ngắn nhất trong luật dân sự Mỹ",
+        },
+        "personal_injury": {
+            "vn": "3 năm (BLDS 2015, Điều 588)",
+            "us": "2-3 năm tùy bang",
+            "note": "Discovery rule áp dụng khi thiệt hại không phát hiện ngay",
+        },
+        "criminal": {
+            "vn": "5-20 năm tùy khung hình phạt (BLTTHS 2015, Điều 27); tội đặc biệt nghiêm trọng không có thời hiệu",
+            "us": "5 năm liên bang (18 U.S.C. § 3282); murder và một số tội không có thời hiệu",
+            "note": "VN: tội có mức hình phạt tử hình không áp dụng thời hiệu truy cứu",
+        },
+    }
 
+    key = case_type.lower().strip()
+    matched = None
+    if key in limits:
+        matched = key
+    else:
+        for k in limits:
+            if key in k or k in key:
+                matched = k
+                break
+
+    if matched is None:
+        available = ", ".join(limits.keys())
+        return (
+            f"Không tìm thấy thời hiệu cho loại vụ án '{case_type}'. "
+            f"Các loại được hỗ trợ: {available}"
+        )
+
+    entry = limits[matched]
+    return (
+        f"Thời hiệu khởi kiện — {matched.upper()}\n"
+        f"  Việt Nam : {entry['vn']}\n"
+        f"  Hoa Kỳ   : {entry['us']}\n"
+        f"  Lưu ý    : {entry['note']}"
+    )
+
+
+TOOLS = [search_legal_database, calculate_damages, check_statute_of_limitations]
+
+QUESTION = "Hậu quả pháp lý là gì nếu một công ty vi phạm thỏa thuận bảo mật NDA Việt Nam?"
 
 async def main():
     print("=" * 70)
@@ -179,6 +275,8 @@ async def main():
         print("LLM chose not to use any tools. Direct answer:")
         print(response.content)
         return
+    else:
+        print("LLM decided to use tools. Proceeding to execute tool calls...\n")
 
     # --- Step 2: Execute tool calls ---
     print(f">>> Step 2: LLM requested {len(response.tool_calls)} tool call(s):\n")
